@@ -8,19 +8,96 @@ import matplotlib.pyplot as plt
 
 
 
-def complexConverter(s):
-    return complex(s)
+def do(filename, ac = True):
+    if ac:
+        aa_field = loadAcMeasurements(filename)
+    else:
+        aa_field = np.loadtxt(filename, skiprows = 9)
+        
+    aa_field = filterMeasurements(aa_field)
+    l_roots, graph, tri = rootsAndGraph(aa_field)
+    plot(l_roots, graph, tri, aa_field)
+
+    
+
+
+def filterMeasurements(aa_field):
+    # At the points at the edges of the grid, for some reason, Comsol shows an anomalous direction of the field.
+    # That causes the script to identify roots where there are none really.
+    # To solve this, I'm getting rid of all points where the magnitude of the magnetic field is less than 1/10 of the maximum.
+    # I think that's a good idea to do anyway, because it can help with noise.
+    a_field_magnitudes = np.linalg.norm(aa_field[:, 3:6], axis = 1)
+    field_magnitude_max = max(a_field_magnitudes)
+    print(field_magnitude_max)
+    np.savetxt('field_magnitudes.txt', a_field_magnitudes)
+    print(f'{len(aa_field)} points measured.')
+    aa_field = aa_field[a_field_magnitudes > field_magnitude_max / 10]
+    print(f'{len(aa_field)} points where the field magnitude is greater than 1/10 of the maximum.')
+    return aa_field
 
 
 
 
-def do(aa_field):
+def loadAcMeasurements(s_filename):
+    # Replace all i's with j's in the data file, because that's what python needs when it reads complex numbers.
+    with open(s_filename, 'r') as file:
+        file_content = file.read()
+        file_content_replaced = file_content.replace('i', 'j')
+    # Write the modified content back to the file.
+    s_modified_filename = s_filename.split('.')[0] + '_modified.txt'
+    with open(s_modified_filename, 'w') as file:
+        file.write(file_content_replaced)
+    # Now load the modified file, with j's instead of i's, just the way python likes it.
+    # Load the locations as real numbers.
+    aa_locations = np.loadtxt(s_modified_filename, skiprows = 9, usecols = (0, 1, 2))
+    # Load the magnetic fields as complex numbers.
+    aa_fields = np.loadtxt(s_modified_filename, skiprows = 9, usecols = (3, 4, 5), dtype = complex)
+    # Dividing the magnetic fields by the phase that gives a maximum real part of the z component doesn't give me a nice source of the field.
+    # However, it seems that if I see that the z field is generally negative, I can simply flip the direction of the field,
+    # and that gives me a nice result.
+    # So for now I'll do that.
+    if np.sum(np.real(aa_fields[:, 2])) < 0: 
+        aa_fields = -aa_fields # For debugging.
+    aa_fields = np.real(aa_fields)
+    aa_field = np.hstack((aa_locations, aa_fields))
+    return aa_field
+
+
+
+
+def plot(l_roots, graph, tri, aa_field):
+    fig = plt.figure()
+    # Plot the Delaunay grid.
+    plt.triplot(aa_field[:,0], aa_field[:,1], tri.simplices)
+    # Print the resulting roots and some details.
+    print('Results:')
+    print(l_roots)
+    print([len(nx.descendants(graph, root)) for root in l_roots])
+    print([aa_field[root] for root in l_roots])
+    # Plot the vertices and the roots.
+    plt.plot(aa_field[:,0], aa_field[:,1], 'o', linestyle = 'None', markersize = 1)
+    a_roots = np.array(l_roots)
+    plt.plot(aa_field[a_roots,0], aa_field[a_roots,1], 'o', linestyle = 'None', color = 'red', markersize = 10)
+    # Plot the edges as arrows.
+    for edge in graph.edges():
+        plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
+                  aa_field[edge[1], 0] - aa_field[edge[0], 0], aa_field[edge[1], 1] - aa_field[edge[0], 1],
+                  head_width = 500, head_length = 1000, fc='green', ec='green')
+        plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
+                  aa_field[edge[0], 3], aa_field[edge[0], 4],
+                  head_width = 500, head_length = 1000, fc='black', ec='black')
+    plt.show()
+    fig.savefig('map.png')
+    plt.close()
+
+
+
+
+def rootsAndGraph(aa_field):
 
     # Do the Delaunay tesselation, using the x and y coordinates of the points.
     aa_points = aa_field[:, 0:2]
     tri = Delaunay(aa_points)
-    # Plot this.
-    plt.triplot(aa_points[:,0], aa_points[:,1], tri.simplices)
     # Get the neighbors of each vertex.
     a_starts, a_neighbors = tri.vertex_neighbor_vertices
     np.savetxt('delaunay_tesselation_starts.txt', a_starts, fmt = '%d')
@@ -79,7 +156,7 @@ def do(aa_field):
     # Find the roots of the trees in the graph, now that it doesn't have cycles.
     l_roots = [node for node, in_degree in g.in_degree() if in_degree == 0]
     # Return the root of the biggest tree in the graph.
-    return l_roots, g
+    return l_roots, g, tri
     
 
 
@@ -95,64 +172,4 @@ if __name__ == '__main__':
     parser.add_argument('--ac', action = 'store_true', help = 'Use this if the input is an AC field (complex numbers).')
     args = parser.parse_args()
     os.chdir(args.folder)
-
-    if args.ac:
-        # Replace all i's with j's in the data file, because that's what python needs when it reads complex numbers.
-        with open('ground_level.txt', 'r') as file:
-            file_content = file.read()
-            file_content_replaced = file_content.replace('i', 'j')
-        # Write the modified content back to the file.
-        with open('ground_level_modified.txt', 'w') as file:
-            file.write(file_content_replaced)
-        print("Replacement completed. Modified content saved to 'ground_level_modified.txt'.")
-        # Now load the modified file, with j's instead of i's, just the way python likes it.
-        # Load the locations as real numbers.
-        aa_locations = np.loadtxt('ground_level_modified.txt', skiprows = 9, usecols = (0, 1, 2))
-        # Load the magnetic fields as complex numbers.
-        aa_fields = np.loadtxt('ground_level_modified.txt', skiprows = 9, usecols = (3, 4, 5), dtype = complex)
-        # Dividing the magnetic fields by the phase that gives a maximum real part of the z component doesn't give me a nice source of the field.
-        # However, it seems that if I see that the z field is generally negative, I can simply flip the direction of the field,
-        # and that gives me a nice result.
-        # So for now I'll do that.
-        if np.sum(np.real(aa_fields[:, 2])) < 0: 
-            aa_fields = -aa_fields # For debugging.
-        aa_fields = np.real(aa_fields)
-        aa_field = np.hstack((aa_locations, aa_fields))
-    else:
-        aa_field = np.loadtxt('ground_level.txt', skiprows = 9)
-        
-    # At the points at the edges of the grid, for some reason, Comsol shows an anomalous direction of the field.
-    # That causes the script to identify roots where there are none really.
-    # To solve this, I'm getting rid of all points where the magnitude of the magnetic field is less than 1/10 of the maximum.
-    # I think that's a good idea to do anyway, because it can help with noise.
-    a_field_magnitudes = np.linalg.norm(aa_field[:, 3:6], axis = 1)
-    field_magnitude_max = max(a_field_magnitudes)
-    print(field_magnitude_max)
-    np.savetxt('field_magnitudes.txt', a_field_magnitudes)
-    print(f'{len(aa_field)} points measured.')
-    aa_field = aa_field[a_field_magnitudes > field_magnitude_max / 10]
-    print(f'{len(aa_field)} points where the field magnitude is greater than 1/10 of the maximum.')
-
-    fig = plt.figure()
-    # Call the function that finds the root.
-    l_roots, g = do(aa_field)
-    print('Results:')
-    print(l_roots)
-    print([len(nx.descendants(g, root)) for root in l_roots])
-    print([aa_field[root] for root in l_roots])
-    # Plot the vertices and the roots.
-    plt.plot(aa_field[:,0], aa_field[:,1], 'o', linestyle = 'None', markersize = 1)
-    a_roots = np.array(l_roots)
-    plt.plot(aa_field[a_roots,0], aa_field[a_roots,1], 'o', linestyle = 'None', color = 'red', markersize = 10)
-    # Plot the edges as arrows.
-    for edge in g.edges():
-        plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
-                  aa_field[edge[1], 0] - aa_field[edge[0], 0], aa_field[edge[1], 1] - aa_field[edge[0], 1],
-                  head_width = 500, head_length = 1000, fc='green', ec='green')
-        plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
-                  aa_field[edge[0], 3], aa_field[edge[0], 4],
-                  head_width = 500, head_length = 1000, fc='black', ec='black')
-    plt.show()
-    fig.savefig('map.png')
-    plt.close()
-
+    do('ground_level.txt', args.ac)
