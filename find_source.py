@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 
 def complexConverter(s):
-    return complex(s.replace('i', 'j'))
+    return complex(s)
 
 
 
@@ -92,20 +92,35 @@ if __name__ == '__main__':
     # The first nine lines are preamble.
     parser = argparse.ArgumentParser()
     parser.add_argument('folder', help = 'Folder in which to find the input file, named "ground_level.txt", and to create the outputs.')
+    parser.add_argument('--ac', action = 'store_true', help = 'Use this if the input is an AC field (complex numbers).')
     args = parser.parse_args()
     os.chdir(args.folder)
-    # Replace all i's with j's in the data file, because that's what python needs when it reads complex numbers.
-    with open('ground_level.txt', 'r') as file:
-        file_content = file.read()
-        file_content_replaced = file_content.replace('i', 'j')
-    # Write the modified content back to the file.
-    with open('ground_level_modified.txt', 'w') as file:
-        file.write(file_content_replaced)
-    print("Replacement completed. Modified content saved to 'ground_level_modified.txt'.")
-    # Now load the modified file, with j's instead of i's, just the way python likes it.
-    aa_field = np.loadtxt('ground_level_modified.txt', skiprows = 9, dtype = complex)
-    aa_field = np.real(aa_field)
-    
+
+    if args.ac:
+        # Replace all i's with j's in the data file, because that's what python needs when it reads complex numbers.
+        with open('ground_level.txt', 'r') as file:
+            file_content = file.read()
+            file_content_replaced = file_content.replace('i', 'j')
+        # Write the modified content back to the file.
+        with open('ground_level_modified.txt', 'w') as file:
+            file.write(file_content_replaced)
+        print("Replacement completed. Modified content saved to 'ground_level_modified.txt'.")
+        # Now load the modified file, with j's instead of i's, just the way python likes it.
+        # Load the locations as real numbers.
+        aa_locations = np.loadtxt('ground_level_modified.txt', skiprows = 9, usecols = (0, 1, 2))
+        # Load the magnetic fields as complex numbers.
+        aa_fields = np.loadtxt('ground_level_modified.txt', skiprows = 9, usecols = (3, 4, 5), dtype = complex)
+        # Dividing the magnetic fields by the phase that gives a maximum real part of the z component doesn't give me a nice source of the field.
+        # However, it seems that if I see that the z field is generally negative, I can simply flip the direction of the field,
+        # and that gives me a nice result.
+        # So for now I'll do that.
+        if np.sum(np.real(aa_fields[:, 2])) < 0: 
+            aa_fields = -aa_fields # For debugging.
+        aa_fields = np.real(aa_fields)
+        aa_field = np.hstack((aa_locations, aa_fields))
+    else:
+        aa_field = np.loadtxt('ground_level.txt', skiprows = 9)
+        
     # At the points at the edges of the grid, for some reason, Comsol shows an anomalous direction of the field.
     # That causes the script to identify roots where there are none really.
     # To solve this, I'm getting rid of all points where the magnitude of the magnetic field is less than 1/10 of the maximum.
