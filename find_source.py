@@ -8,17 +8,25 @@ import matplotlib.pyplot as plt
 
 
 
-def do(filename, ac = True):
+def do(s_filename, ac = True):
+    # Get the data file, which is a numpy 2d array.
+    # It's made up of: x coordinate, y coordinate, z coordinate, x field, y field, z field.
+    # the last three are complex if it's the result of an AC simulation.
+    # The first nine lines are preamble.
     if ac:
-        aa_field = loadAcMeasurements(filename)
+        aa_field = loadAcMeasurements(s_filename)
     else:
-        aa_field = np.loadtxt(filename, skiprows = 9)
+        aa_field = np.loadtxt(s_filename, skiprows = 9)
         
     aa_field = filterMeasurements(aa_field)
     l_roots, graph, tri = rootsAndGraph(aa_field)
-    plot(l_roots, graph, tri, aa_field)
+    plot(l_roots, graph, tri, aa_field, s_filename)
+    # Return the x and y coordinates of the root.
+    # If there's more than one root, return the coordinates of the first root.
+    # I don't know if this is good enough. I might have to improve it further on.
+    return aa_field[np.array(l_roots[0]), 0:2]
 
-    
+
 
 
 def filterMeasurements(aa_field):
@@ -65,7 +73,7 @@ def loadAcMeasurements(s_filename):
 
 
 
-def plot(l_roots, graph, tri, aa_field):
+def plot(l_roots, graph, tri, aa_field, s_filename):
     fig = plt.figure()
     # Plot the Delaunay grid.
     plt.triplot(aa_field[:,0], aa_field[:,1], tri.simplices)
@@ -78,16 +86,17 @@ def plot(l_roots, graph, tri, aa_field):
     plt.plot(aa_field[:,0], aa_field[:,1], 'o', linestyle = 'None', markersize = 1)
     a_roots = np.array(l_roots)
     plt.plot(aa_field[a_roots,0], aa_field[a_roots,1], 'o', linestyle = 'None', color = 'red', markersize = 10)
-    # Plot the edges as arrows.
     for edge in graph.edges():
+        # Plot the edges as arrows.
         plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
                   aa_field[edge[1], 0] - aa_field[edge[0], 0], aa_field[edge[1], 1] - aa_field[edge[0], 1],
-                  head_width = 500, head_length = 1000, fc='green', ec='green')
+                  head_width = 200, head_length = 400, fc='green', ec='green', length_includes_head = True)
+        # Plot the magnetic fields on the planes as arrows.
         plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
                   aa_field[edge[0], 3], aa_field[edge[0], 4],
                   head_width = 500, head_length = 1000, fc='black', ec='black')
-    plt.show()
-    fig.savefig('map.png')
+    #plt.show()
+    fig.savefig(s_filename.split('.')[0] + '_map.png')
     plt.close()
 
 
@@ -163,10 +172,6 @@ def rootsAndGraph(aa_field):
     
 if __name__ == '__main__':
 
-    # Get the data file, which is a numpy 2d array.
-    # It's made up of: x coordinate, y coordinate, z coordinate, x field, y field, z field.
-    # the last three are complex.
-    # The first nine lines are preamble.
     parser = argparse.ArgumentParser()
     parser.add_argument('folder', help = 'Folder in which to find the input file, named "ground_level.txt", and to create the outputs.')
     parser.add_argument('--ac', action = 'store_true', help = 'Use this if the input is an AC field (complex numbers).')
