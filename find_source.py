@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 
 def do(s_filename, ac = True):
+    print(f'\nExecuting algorithm for {s_filename}.')
     # Get the data file, which is a numpy 2d array.
     # It's made up of: x coordinate, y coordinate, z coordinate, x field, y field, z field.
     # the last three are complex if it's the result of an AC simulation.
@@ -30,11 +31,18 @@ def do(s_filename, ac = True):
             l_roots = l_opposite_roots
             graph = opposite_graph
             tri = opposite_tri
-    plot(l_roots, graph, tri, aa_field, s_filename)
+    # If there's more than one root, return the coordinates of the root with the most descendants.
+    if len(l_roots) > 1:
+        print('I got more than one root.')
+        a_descendants = np.array([len(nx.descendants(graph, root)) for root in l_roots])
+        print(f'The numbers of descendants are {a_descendants}.')
+        real_root = l_roots[np.argmax(a_descendants)]
+    else:
+        real_root = l_roots[0]
+    # Plot.
+    plot(real_root, graph, tri, aa_field, s_filename)
     # Return the x and y coordinates of the root.
-    # If there's more than one root, return the coordinates of the first root.
-    # I don't know if this is good enough. I might have to improve it further on.
-    return aa_field[np.array(l_roots[0]), 0:2]
+    return aa_field[real_root, 0:2]
 
 
 
@@ -77,29 +85,23 @@ def loadAcMeasurements(s_filename):
 
 
 
-def plot(l_roots, graph, tri, aa_field, s_filename):
+def plot(root, graph, tri, aa_field, s_filename):
     fig = plt.figure()
     # Plot the Delaunay grid.
     plt.triplot(aa_field[:,0], aa_field[:,1], tri.simplices)
-    # Print the resulting roots and some details.
-    print('Results:')
-    print(l_roots)
-    print([len(nx.descendants(graph, root)) for root in l_roots])
-    print([aa_field[root] for root in l_roots])
     # Plot the vertices and the roots.
     plt.plot(aa_field[:,0], aa_field[:,1], 'o', linestyle = 'None', markersize = 1)
-    a_roots = np.array(l_roots)
-    plt.plot(aa_field[a_roots,0], aa_field[a_roots,1], 'o', linestyle = 'None', color = 'red', markersize = 10)
+    plt.plot(aa_field[root, 0], aa_field[root, 1], 'o', linestyle = 'None', color = 'red', markersize = 10)
     for edge in graph.edges():
         # Plot the edges as arrows.
         plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
                   aa_field[edge[1], 0] - aa_field[edge[0], 0], aa_field[edge[1], 1] - aa_field[edge[0], 1],
-                  head_width = 200, head_length = 400, fc='green', ec='green', length_includes_head = True)
+                  head_width = 20, head_length = 40, fc='green', ec='green', length_includes_head = True)
         # Plot the magnetic fields on the planes as arrows.
-        plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
-                  aa_field[edge[0], 3], aa_field[edge[0], 4],
-                  head_width = 500, head_length = 1000, fc='black', ec='black')
-    #plt.show()
+        plt.arrow(aa_field[edge[1], 0], aa_field[edge[1], 1],
+                  aa_field[edge[1], 3], aa_field[edge[1], 4],
+                  head_width = 20, head_length = 40, fc='black', ec='black')
+    plt.show()
     fig.savefig(s_filename.split('.')[0] + '_map.png')
     plt.close()
 
