@@ -21,8 +21,8 @@ class Dipole:
     def plot(self):
         plt.plot(*self.a_derived_location, 'o', linestyle = 'None', markersize = 1, color = 'red')
         plt.plot(*self.a_known_location, 'x', linestyle = 'None', markersize = 1, color = 'blue')
-        plt.arrow(*self.a_known_location, *(self.a_derived_location - self.a_known_location), head_width = 500,
-                  head_length = 1000, fc='black', ec='black', length_includes_head = True)
+        plt.arrow(*self.a_known_location, *(self.a_derived_location - self.a_known_location), head_width = 200,
+                  head_length = 400, fc='black', ec='black', length_includes_head = True)
 
         
 

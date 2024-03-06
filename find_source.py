@@ -20,6 +20,16 @@ def do(s_filename, ac = True):
         
     aa_field = filterMeasurements(aa_field)
     l_roots, graph, tri = rootsAndGraph(aa_field)
+    # Dirty trick: In the AC case, I don't know if the field is flowing in or out.
+    # So I just do the calculation for both possibilities, and then take the solution which contains less roots.
+    if ac:
+        aa_opposite_field = np.hstack((aa_field[:, 0:3], -aa_field[:, 3:6]))
+        l_opposite_roots, opposite_graph, opposite_tri = rootsAndGraph(aa_opposite_field)
+        if len(l_opposite_roots) < len(l_roots):
+            aa_field = aa_opposite_field
+            l_roots = l_opposite_roots
+            graph = opposite_graph
+            tri = opposite_tri
     plot(l_roots, graph, tri, aa_field, s_filename)
     # Return the x and y coordinates of the root.
     # If there's more than one root, return the coordinates of the first root.
@@ -60,12 +70,6 @@ def loadAcMeasurements(s_filename):
     aa_locations = np.loadtxt(s_modified_filename, skiprows = 9, usecols = (0, 1, 2))
     # Load the magnetic fields as complex numbers.
     aa_fields = np.loadtxt(s_modified_filename, skiprows = 9, usecols = (3, 4, 5), dtype = complex)
-    # Dividing the magnetic fields by the phase that gives a maximum real part of the z component doesn't give me a nice source of the field.
-    # However, it seems that if I see that the z field is generally negative, I can simply flip the direction of the field,
-    # and that gives me a nice result.
-    # So for now I'll do that.
-    if np.sum(np.real(aa_fields[:, 2])) < 0: 
-        aa_fields = -aa_fields # For debugging.
     aa_fields = np.real(aa_fields)
     aa_field = np.hstack((aa_locations, aa_fields))
     return aa_field
