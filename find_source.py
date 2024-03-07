@@ -26,7 +26,7 @@ def do(s_filename, ac = True):
     if ac:
         aa_opposite_field = np.hstack((aa_field[:, 0:3], -aa_field[:, 3:6]))
         l_opposite_roots, opposite_graph, opposite_tri = rootsAndGraph(aa_opposite_field)
-        if len(l_opposite_roots) < len(l_roots):
+        if True: #len(l_opposite_roots) < len(l_roots):
             aa_field = aa_opposite_field
             l_roots = l_opposite_roots
             graph = opposite_graph
@@ -40,7 +40,7 @@ def do(s_filename, ac = True):
     else:
         real_root = l_roots[0]
     # Plot.
-    plot(real_root, graph, tri, aa_field, s_filename)
+    plot(real_root, l_roots, graph, tri, aa_field, s_filename)
     # Return the x and y coordinates of the root.
     return aa_field[real_root, 0:2]
 
@@ -85,22 +85,28 @@ def loadAcMeasurements(s_filename):
 
 
 
-def plot(root, graph, tri, aa_field, s_filename):
+def plot(real_root, l_roots, graph, tri, aa_field, s_filename):
     fig = plt.figure()
     # Plot the Delaunay grid.
     plt.triplot(aa_field[:,0], aa_field[:,1], tri.simplices)
-    # Plot the vertices and the roots.
-    plt.plot(aa_field[:,0], aa_field[:,1], 'o', linestyle = 'None', markersize = 1)
-    plt.plot(aa_field[root, 0], aa_field[root, 1], 'o', linestyle = 'None', color = 'red', markersize = 10)
+    # Plot the real roots.
+    plt.plot(aa_field[real_root, 0], aa_field[real_root, 1], 'o', linestyle = 'None', color = 'red', markersize = 10)
+    # Plot other roots, if they exist.
+    for root in l_roots:
+        plt.plot(aa_field[root, 0], aa_field[root, 1], 'o', linestyle = 'None', color = 'red', markersize = 5)
+    # Plot the edges as arrows.
     for edge in graph.edges():
-        # Plot the edges as arrows.
         plt.arrow(aa_field[edge[0], 0], aa_field[edge[0], 1],
                   aa_field[edge[1], 0] - aa_field[edge[0], 0], aa_field[edge[1], 1] - aa_field[edge[0], 1],
                   head_width = 20, head_length = 40, fc='green', ec='green', length_includes_head = True)
-        # Plot the magnetic fields on the planes as arrows.
-        plt.arrow(aa_field[edge[1], 0], aa_field[edge[1], 1],
-                  aa_field[edge[1], 3], aa_field[edge[1], 4],
-                  head_width = 20, head_length = 40, fc='black', ec='black')
+    # Plot the magnetic fields on the planes as arrows.
+    # But only do it for points which were used in the Delaunay grid.
+    a_coplanar = tri.coplanar[:, 0]
+    a_boolean = np.ones(aa_field.shape[0], dtype = bool)
+    a_boolean[a_coplanar] = False
+    aa_filtered_field = aa_field[a_boolean]
+    for a_point in aa_filtered_field:
+        plt.arrow(a_point[0], a_point[1], a_point[3], a_point[4], head_width = 20, head_length = 40, fc='black', ec='black')
     plt.show()
     fig.savefig(s_filename.split('.')[0] + '_map.png')
     plt.close()
@@ -128,9 +134,7 @@ def rootsAndGraph(aa_field):
         if a_starts[vertex] == a_starts[vertex + 1]:
             continue
         # Find the normalized field in x and y at the vertex.
-        a_field_vector = aa_field[vertex, 3:5]
-        a_field_direction = a_field_vector / np.linalg.norm(a_field_vector)
-        #print(a_field_direction)
+        a_field = aa_field[vertex, 3:5]
         # Find the directions from the neighboring vertices to the vertex.
         a_vertex_neighbors = a_neighbors[a_starts[vertex] : a_starts[vertex + 1]]
         a_point = aa_field[vertex, 0:2]
@@ -139,13 +143,13 @@ def rootsAndGraph(aa_field):
         aa_directions_from_neighbors_to_point = \
             aa_vectors_from_neighbors_to_point / np.linalg.norm(aa_vectors_from_neighbors_to_point, axis = 1)[:, np.newaxis]
         #print(aa_directions_from_neighbors_to_point)
-        a_alignment = np.dot(aa_directions_from_neighbors_to_point, a_field_direction)
+        a_scalar_projection = np.dot(aa_directions_from_neighbors_to_point, a_field)
         #print(a_alignment)
-        parent_index_in_list_of_neighbors = np.argmax(a_alignment)
+        parent_index_in_list_of_neighbors = np.argmax(a_scalar_projection)
         parent = a_vertex_neighbors[parent_index_in_list_of_neighbors]
         # Add an edge from the parent to the vertex.
-        g.add_edge(parent, vertex)
-        #print(g)
+        # The weight of the edge is the scalar projection of the field on the direction from the neighbor to the node.
+        g.add_edge(parent, vertex, weight = a_scalar_projection[parent_index_in_list_of_neighbors])
         
     # Remove the cycles in the graph.
     print('Removing cycles.')
@@ -154,20 +158,16 @@ def rootsAndGraph(aa_field):
         ll_cycles = nx.simple_cycles(g)
         try:
             l_cycle = next(ll_cycles)
-            print(l_cycle)
+            print(f'Found a cycle: {l_cycle}.')
         # If there's no first cycle, we're done.
         except StopIteration:
             break
-        # In each cycle, we assume that the node with the largest z component of the field should not have a parent.
-        # I saw that this isn't always optimal. But it's good enough for me for now.
-        print(aa_field[np.array(l_cycle)])
-        a_z_field_components = aa_field[np.array(l_cycle), 5]
-        index_in_cycle_with_largest_z_field = np.argmax(a_z_field_components)
-        node_with_largest_z_field = l_cycle[index_in_cycle_with_largest_z_field]
-        print(node_with_largest_z_field)
-        parent_of_node_with_largest_z_field = l_cycle[index_in_cycle_with_largest_z_field - 1]
-        g.remove_edge(parent_of_node_with_largest_z_field, node_with_largest_z_field)
-                
+        # If there is a cycle, we remove the edge with the least weight.
+        l_edges_in_cycle = [(l_cycle[i - 1], l_cycle[i]) for i in range(len(l_cycle))]
+        a_weights = np.array([g[edge[0]][edge[1]]['weight'] for edge in l_edges_in_cycle])
+        edge_to_remove = l_edges_in_cycle[np.argmin(a_weights)]
+        g.remove_edge(edge_to_remove[0], edge_to_remove[1])
+        
     # Find the roots of the trees in the graph, now that it doesn't have cycles.
     l_roots = [node for node, in_degree in g.in_degree() if in_degree == 0]
     # Return the root of the biggest tree in the graph.
