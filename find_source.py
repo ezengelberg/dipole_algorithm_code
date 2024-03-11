@@ -8,6 +8,24 @@ import matplotlib.pyplot as plt
 
 
 
+# This function decides which phase makes more sense. It can return either the string 'original' or the string 'opposite'.
+def correctPhase(l_roots, graph, l_opposite_roots, opposite_graph):
+    # If one of the phases doesn't have a root, choose the other.
+    if not l_opposite_roots:
+        return 'original'
+    if not l_roots:
+        return 'opposite'
+    # If both phases have roots, choose the phase with the root that has the most descendants.
+    a_descendants_original = np.array([len(nx.descendants(graph, root)) for root in l_roots])
+    a_descendants_opposite = np.array([len(nx.descendants(opposite_graph, root)) for root in l_opposite_roots])
+    if np.max(a_descendants_original) > np.max(a_descendants_opposite):
+        return 'original'
+    else:
+        return 'opposite'
+
+
+
+
 def do(s_filename, ac = True):
     print(f'\nExecuting algorithm for {s_filename}.')
     # Get the data file, which is a numpy 2d array.
@@ -22,23 +40,22 @@ def do(s_filename, ac = True):
     aa_field = filterMeasurements(aa_field)
     l_roots, graph, tri = rootsAndGraph(aa_field)
     # Dirty trick: In the AC case, I don't know if the field is flowing in or out.
-    # So I just do the calculation for both possibilities, and then take the solution which contains less roots.
+    # So I just do the calculation for both possibilities, and then take the solution which makes more sense.
     if ac:
         aa_opposite_field = np.hstack((aa_field[:, 0:3], -aa_field[:, 3:6]))
         l_opposite_roots, opposite_graph, opposite_tri = rootsAndGraph(aa_opposite_field)
-        if True: #len(l_opposite_roots) < len(l_roots):
+        if correctPhase(l_roots, graph, l_opposite_roots, opposite_graph) == 'opposite':
             aa_field = aa_opposite_field
             l_roots = l_opposite_roots
             graph = opposite_graph
             tri = opposite_tri
+    # Return the coordinates of the root.
     # If there's more than one root, return the coordinates of the root with the most descendants.
     if len(l_roots) > 1:
         print('I got more than one root.')
-        a_descendants = np.array([len(nx.descendants(graph, root)) for root in l_roots])
-        print(f'The numbers of descendants are {a_descendants}.')
-        real_root = l_roots[np.argmax(a_descendants)]
-    else:
-        real_root = l_roots[0]
+    a_descendants = np.array([len(nx.descendants(graph, root)) for root in l_roots])
+    print(f'The numbers of descendants are {a_descendants}.')
+    real_root = l_roots[np.argmax(a_descendants)]
     # Plot.
     plot(real_root, l_roots, graph, tri, aa_field, s_filename)
     # Return the x and y coordinates of the root.
@@ -61,6 +78,21 @@ def filterMeasurements(aa_field):
     print(f'{len(aa_field)} points where the field magnitude is greater than 1/10 of the maximum.')
     return aa_field
 
+
+
+
+def getBoundaryNodes(tri):
+    ll_edges = []
+    for l_simplex in tri.simplices:
+        ll_simplex_edges = [sorted((l_simplex[i - 1], l_simplex[i])) for i in range(3)]
+        ll_edges += ll_simplex_edges
+    a_all_nodes = np.unique(np.array(ll_edges).flatten())
+    print(f'There are {len(a_all_nodes)} nodes.')
+    ll_boundary_edges = [l_edge for l_edge in ll_edges if ll_edges.count(l_edge) == 1]
+    a_boundary_nodes = np.unique(np.array(ll_boundary_edges).flatten())
+    print(f'There are {len(a_boundary_nodes)} boundary nodes.')
+    return a_boundary_nodes
+            
 
 
 
@@ -107,7 +139,7 @@ def plot(real_root, l_roots, graph, tri, aa_field, s_filename):
     aa_filtered_field = aa_field[a_boolean]
     for a_point in aa_filtered_field:
         plt.arrow(a_point[0], a_point[1], a_point[3], a_point[4], head_width = 20, head_length = 40, fc='black', ec='black')
-    plt.show()
+    #plt.show()
     fig.savefig(s_filename.split('.')[0] + '_map.png')
     plt.close()
 
@@ -169,7 +201,10 @@ def rootsAndGraph(aa_field):
         g.remove_edge(edge_to_remove[0], edge_to_remove[1])
         
     # Find the roots of the trees in the graph, now that it doesn't have cycles.
-    l_roots = [node for node, in_degree in g.in_degree() if in_degree == 0]
+    l_roots = np.array([node for node, in_degree in g.in_degree() if in_degree == 0])
+    # Remove roots which are at the outer boundaries of the tesselation.
+    a_boundary_nodes = getBoundaryNodes(tri)
+    l_roots = [node for node in l_roots if node not in a_boundary_nodes]
     # Return the root of the biggest tree in the graph.
     return l_roots, g, tri
     
