@@ -26,7 +26,7 @@ def correctPhase(l_roots, graph, l_opposite_roots, opposite_graph):
 
 
 
-def do(s_filename, ac = True):
+def do(s_filename, ac = True, noise = 0):
     print(f'\nExecuting algorithm for {s_filename}.')
     # Get the data file, which is a numpy 2d array.
     # It's made up of: x coordinate, y coordinate, z coordinate, x field, y field, z field.
@@ -36,6 +36,14 @@ def do(s_filename, ac = True):
         aa_field = loadAcMeasurements(s_filename)
     else:
         aa_field = np.loadtxt(s_filename, skiprows = 9)
+    # If instructed, add noise.
+    if noise:
+        rng = np.random.default_rng()
+        aa_noise = noise * rng.standard_normal(size = (len(aa_field), 3))
+        aa_field[:, 3:6] += aa_noise
+        # Save the array with the noise added, for future reference.
+        s_noisy_filename = s_filename.split('.')[0] + f'_noise_level_{noise}.txt'
+        np.savetxt(s_noisy_filename, aa_field)
         
     aa_field = filterMeasurements(aa_field)
     l_roots, graph, tri = rootsAndGraph(aa_field)
@@ -216,6 +224,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('folder', help = 'Folder in which to find the input file, named "ground_level.txt", and to create the outputs.')
     parser.add_argument('--ac', action = 'store_true', help = 'Use this if the input is an AC field (complex numbers).')
+    parser.add_argument('--noise', type = float, default = 0.0, help = 'Noise level to add to the measurements, in Tesla.')
     args = parser.parse_args()
     os.chdir(args.folder)
-    do('ground_level.txt', args.ac)
+    do('ground_level.txt', args.ac, args.noise)
